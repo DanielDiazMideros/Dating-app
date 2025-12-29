@@ -6,15 +6,25 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "create-fake-profiles": "tsx scripts/create-fake-profiles.ts"
   },
   "dependencies": {
+    "@stream-io/video-react-sdk": "^1.30.0",
+    "@supabase/ssr": "^0.8.0",
+    "dotenv": "^17.2.3",
     "next": "16.0.10",
     "react": "19.2.1",
-    "react-dom": "19.2.1"
+    "react-dom": "19.2.1",
+    "react-hook-form": "^7.68.0",
+    "stream-chat": "^9.27.2",
+    "stream-chat-react": "^13.13.1",
+    "tsx": "^4.21.0",
+    "zustand": "^5.0.9"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
+    "@faker-js/faker": "^10.1.0",
+    "@tailwindcss/postcss": "^4.1.18",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
