@@ -10,3 +10,15 @@ export interface MatchNotificationProps {
   onClose: () => void;
   onStartChat: () => void;
 }
+
+export interface ChatHeaderProps {
+  user: UserProfile;
+  onVideoCall: () => void;
+}
+export interface Message {
+  id: string;
+  text: string;
+  sender: "me" | "other";
+  timestamp: Date;
+  user_id: string;
+}
