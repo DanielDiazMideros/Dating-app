@@ -1,3 +1,4 @@
+"use client";
 import { useRouter } from "next/navigation";
 import { ChatHeaderProps } from "./types";
 import { calculateAge } from "@/lib/utils";

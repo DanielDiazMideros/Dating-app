@@ -35,3 +35,8 @@ export const formatTime = (timestamp: string) => {
 
   return rules.find((r) => r.test({ hours, days }))!.format(date);
 };
+
+
+export const formatTimeChat = (date: Date) => {
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}

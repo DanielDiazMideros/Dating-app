@@ -22,3 +22,7 @@ export interface Message {
   timestamp: Date;
   user_id: string;
 }
+
+export interface ChatFormValues {
+  message: string;
+}
