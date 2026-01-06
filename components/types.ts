@@ -26,3 +26,9 @@ export interface Message {
 export interface ChatFormValues {
   message: string;
 }
+
+export interface VideoCallProps {
+  callId: string;
+  onCallEnd: () => void;
+  isIncoming?: boolean;
+}

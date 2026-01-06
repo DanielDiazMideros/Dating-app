@@ -1,19 +1,30 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
-import { Channel, StreamChat } from "stream-chat";
-
-import { createOrGetChannel, getStreamUserToken } from "@/lib/actions/stream";
+import {
+  RefObject,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
+import { Channel, Event, StreamChat } from "stream-chat";
+import {
+  createOrGetChannel,
+  createVideoCall,
+  getStreamUserToken,
+} from "@/lib/actions/stream";
 import { formatTimeChat } from "@/lib/utils";
 import { UserProfile } from "@/app/profile/types";
-
 import { Message } from "./types";
+import { VideoCall } from "@/components";
 
 export const StreamChatInterface = ({
   otherUser,
+  ref,
 }: {
   otherUser: UserProfile;
+  ref: RefObject<{ handleVideoCall: () => void } | null>;
 }) => {
   const router = useRouter();
 
@@ -21,10 +32,17 @@ export const StreamChatInterface = ({
   const [error, setError] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
+  const [newMessage, setNewMessage] = useState("");
+  const [isTyping, setIsTyping] = useState<boolean>(false);
   const [client, setClient] = useState<StreamChat | null>(null);
   const [channel, setChannel] = useState<Channel | null>(null);
-  const [showScrollButton, setShowScrollButton] = useState(false);
-  const [newMessage, setNewMessage] = useState("");
+  const [showScrollButton, setShowScrollButton] = useState<boolean>(false);
+  const [videoCallId, setVideoCallId] = useState<string>("");
+  const [incomingCallId, setIncomingCallId] = useState<string>("");
+  const [showVideoCall, setShowVideoCall] = useState<boolean>(false);
+  const [showIncomingCall, setShowIncomingCall] = useState<boolean>(false);
+  const [isCallInitiator, setIsCallInitiator] = useState<boolean>(false);
+  const [callerName, setCallerName] = useState<string>("");
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -57,6 +75,13 @@ export const StreamChatInterface = ({
   }, []);
 
   useEffect(() => {
+    setShowVideoCall(false);
+    setVideoCallId("");
+    setShowIncomingCall(false);
+    setIncomingCallId("");
+    setCallerName("");
+    setIsCallInitiator(false);
+
     const initializeChat = async () => {
       try {
         setError(null);
@@ -89,8 +114,6 @@ export const StreamChatInterface = ({
 
         // Load existing messages
         const state = await chatChannel.query({ messages: { limit: 20 } });
-        console.log("Loaded messages:", state.messages);
-
         // Convert messages
         const convertedMessages: Message[] = state.messages.map((msg) => ({
           id: msg.id,
@@ -105,6 +128,16 @@ export const StreamChatInterface = ({
         chatChannel.on("message.new", (event) => {
           if (!event.message) return;
           if (event.message.user?.id === userId) return;
+
+          if (event.message.text?.includes("📹 Video call initiated")) {
+            const customData = event.message as any;
+            if (customData.caller_id !== userId) {
+              setIncomingCallId(customData.call_id);
+              setCallerName(customData.caller_name || "Someone");
+              setShowIncomingCall(true);
+            }
+            return;
+          }
 
           const newMsg: Message = {
             id: event.message.id,
@@ -123,11 +156,23 @@ export const StreamChatInterface = ({
           });
         });
 
+        chatChannel.on("typing.start", (event: Event) => {
+          if (event.user?.id !== userId) {
+            setIsTyping(true);
+          }
+        });
+
+        chatChannel.on("typing.stop", (event: Event) => {
+          if (event.user?.id !== userId) {
+            setIsTyping(false);
+          }
+        });
+
         setClient(chatClient);
         setChannel(chatChannel);
       } catch (err) {
         router.push("/chat");
-        setError("Failed to load chat interface.");
+        setError(`Failed to load chat interface ${err}`);
       } finally {
         setLoading(false);
       }
@@ -137,6 +182,54 @@ export const StreamChatInterface = ({
       initializeChat();
     }
   }, [otherUser, router]);
+
+  const handleVideoCall = async () => {
+    try {
+      const { callId } = await createVideoCall(otherUser.id);
+      setVideoCallId(callId!);
+      setShowVideoCall(true);
+      setIsCallInitiator(true);
+
+      if (channel) {
+        const messageData = {
+          text: `📹 Video call initiated by ${
+            isCallInitiator ? "you" : "other user"
+          }`,
+          call_id: callId,
+          caller_id: currentUserId,
+          caller_name: otherUser.full_name || "Someone",
+        };
+        await channel.sendMessage(messageData);
+      }
+    } catch (error) {
+      console.error("Error initiating video call:", error);
+    }
+  };
+
+  const handleCallEnd = () => {
+    setShowVideoCall(false);
+    setVideoCallId("");
+    setIsCallInitiator(false);
+    setShowIncomingCall(false);
+    setVideoCallId("");
+    setCallerName("");
+  };
+
+  const handleAcceptCall = () => {
+    setVideoCallId(incomingCallId);
+    setShowVideoCall(true);
+    setShowIncomingCall(false);
+    setIncomingCallId("");
+    setIsCallInitiator(false);
+  };
+
+  const handleDeclineCall = () => {
+    setShowIncomingCall(false);
+    setIncomingCallId("");
+    setCallerName("");
+  };
+
+  useImperativeHandle(ref, () => ({ handleVideoCall }));
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -152,8 +245,6 @@ export const StreamChatInterface = ({
         timestamp: new Date(),
         user_id: currentUserId,
       };
-
-      // (nota) messageData no se usa: si querías optimista, aquí tocaría hacer setMessages(...)
       console.log(messageData);
     } catch (err) {
       console.error("Error sending message:", err);
@@ -192,7 +283,7 @@ export const StreamChatInterface = ({
             <div
               className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl ${
                 msg.sender === "me"
-                  ? "bg-gradient-to-r from-pink-500 to-red-500 text-white"
+                  ? "bg-linear-to-r from-pink-500 to-red-500 text-white"
                   : "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white"
               }`}
             >
@@ -210,6 +301,24 @@ export const StreamChatInterface = ({
             </div>
           </div>
         ))}
+
+        {isTyping && (
+          <div className="flex justify-start">
+            <div className="bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white px-4 py-2 rounded-2xl">
+              <div className="flex space-x-1">
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                <div
+                  className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                  style={{ animationDelay: "0.1s" }}
+                ></div>
+                <div
+                  className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                  style={{ animationDelay: "0.2s" }}
+                ></div>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div ref={messagesEndRef} />
       </div>
@@ -247,13 +356,12 @@ export const StreamChatInterface = ({
             value={newMessage}
             onChange={(e) => {
               setNewMessage(e.target.value);
-
               if (channel && e.target.value.length > 0) {
-                channel.keystroke();
+                channel?.keystroke();
               }
             }}
             onFocus={() => {
-              channel?.keystroke();
+              if (channel) channel?.keystroke();
             }}
             placeholder="Type a message..."
             className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-full focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent dark:bg-gray-800 dark:text-white"
@@ -263,7 +371,7 @@ export const StreamChatInterface = ({
           <button
             type="submit"
             disabled={!newMessage.trim() || !channel}
-            className="px-6 py-2 bg-gradient-to-r from-pink-500 to-red-500 text-white rounded-full hover:from-pink-600 hover:to-red-600 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+            className="px-6 py-2 bg-linear-to-r from-pink-500 to-red-500 text-white rounded-full hover:from-pink-600 hover:to-red-600 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
           >
             <svg
               className="w-5 h-5"
@@ -281,6 +389,50 @@ export const StreamChatInterface = ({
           </button>
         </form>
       </div>
+
+      {showIncomingCall && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 max-w-sm mx-4 shadow-2xl">
+            <div className="text-center">
+              <div className="w-20 h-20 rounded-full overflow-hidden mx-auto mb-4 border-4 border-pink-500">
+                <img
+                  src={otherUser.avatar_url}
+                  alt={otherUser.full_name}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+                Incoming Video Call
+              </h3>
+              <p className="text-gray-600 dark:text-gray-400 mb-6">
+                {callerName} is calling you
+              </p>
+              <div className="flex space-x-4">
+                <button
+                  onClick={handleDeclineCall}
+                  className="flex-1 bg-red-500 text-white py-3 px-6 rounded-full font-semibold hover:bg-red-600 transition-colors duration-200"
+                >
+                  Decline
+                </button>
+                <button
+                  onClick={handleAcceptCall}
+                  className="flex-1 bg-green-500 text-white py-3 px-6 rounded-full font-semibold hover:bg-green-600 transition-colors duration-200"
+                >
+                  Accept
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showVideoCall && videoCallId && (
+        <VideoCall
+          onCallEnd={handleCallEnd}
+          callId={videoCallId}
+          isIncoming={!isCallInitiator}
+        />
+      )}
     </div>
   );
 };

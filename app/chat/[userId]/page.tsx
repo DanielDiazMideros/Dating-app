@@ -4,7 +4,7 @@ import { ChatHeader, Loading, StreamChatInterface } from "@/components";
 import { useAuthStore } from "@/contexts/auth-context";
 import { getUserMatches } from "@/lib/actions/matches";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function ChatConversationPage() {
   const params = useParams();
@@ -13,6 +13,7 @@ export default function ChatConversationPage() {
   const userId = params.userId;
   const { user } = useAuthStore();
   const router = useRouter();
+  const chatInterfaceRef = useRef<{ handleVideoCall: () => void } | null>(null);
 
   useEffect(() => {
     const loadUserData = async () => {
@@ -73,13 +74,13 @@ export default function ChatConversationPage() {
         <ChatHeader
           user={otherUser}
           onVideoCall={() => {
-            // chatInterfaceRef.current?.handleVideoCall();
+            chatInterfaceRef.current?.handleVideoCall();
           }}
         />
         <div className="flex-1 min-h-0">
           <StreamChatInterface
             otherUser={otherUser}
-            //ref={chatInterfaceRef}
+            ref={chatInterfaceRef}
           />
         </div>
       </div>

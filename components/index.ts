@@ -6,3 +6,4 @@ export * from "./PhotoUpload";
 export * from "./MatchNotification";
 export * from "./ChatHeader";
 export * from "./StreamChatInterface";
+export * from "./VideoCall";
